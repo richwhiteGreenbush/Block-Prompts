@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Prompt Builder</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* A soft, modern background color */
+        }
+        .block-container {
+            user-select: none; /* Prevents text selection during drag */
+            cursor: grab;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            margin: 0.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+        }
+        .block-container:active {
+            cursor: grabbing;
+        }
+        .block-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+        .block-verb {
+            background-color: #4CAF50; /* Green */
+            color: white;
+        }
+        .block-noun {
+            background-color: #F44336; /* Red */
+            color: white;
+        }
+        .block-preposition {
+            background-color: #FF9800; /* Orange */
+            color: white;
+        }
+        /* Style for the blocks after they are dropped into the workspace */
+        #workspace .block {
+            display: inline-block; /* Aligns with text */
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem;
+            border-radius: 0.375rem;
+            cursor: pointer; /* Change cursor to indicate it's clickable */
+            user-select: none; /* Prevents text selection */
+        }
+        #workspace .block:hover {
+            transform: none;
+            box-shadow: none;
+            opacity: 0.8; /* Slight hover effect for clickability */
+        }
+        .workspace-input {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            border: 2px dashed #CBD5E0;
+            border-radius: 0.75rem;
+            background-color: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="p-8">
+
+    <div class="flex flex-col space-y-8 h-screen">
+
+        <!-- Block Palette -->
+        <div id="block-palette" class="w-full p-4 bg-white rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4 text-center">Block Palette</h2>
+            <div class="flex flex-wrap justify-center">
+                <!-- Verbs (Green) -->
+                <div class="block-container block-verb" draggable="true" data-type="verb">create a chart</div>
+                <div class="block-container block-verb" draggable="true" data-type="verb">create a line graph</div>
+                <div class="block-container block-verb" draggable="true" data-type="verb">create a table</div>
+                <div class="block-container block-verb" draggable="true" data-type="verb">showing</div>
+                <div class="block-container block-verb" draggable="true" data-type="verb">comparing</div>
+                
+                <!-- Nouns (Red) -->
+                <div class="block-container block-noun" draggable="true" data-type="noun">scores</div>
+                <div class="block-container block-noun" draggable="true" data-type="noun">points</div>
+                <div class="block-container block-noun" draggable="true" data-type="noun">grades</div>
+
+                <!-- Context/Prepositions (Orange) -->
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">yearly</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">by semester</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">monthly</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">weekly</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">by grade</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">by school</div>
+                <div class="block-container block-preposition" draggable="true" data-type="preposition">by class</div>
+            </div>
+        </div>
+
+        <!-- Workspace & Result -->
+        <div class="w-full flex flex-col space-y-4">
+            <div class="flex-grow flex flex-col bg-white rounded-lg shadow-lg overflow-hidden p-4">
+                <h2 class="text-2xl font-bold mb-2 text-center">Prompt Workspace</h2>
+                <!-- The contenteditable div acts as the main workspace -->
+                <div id="workspace" class="workspace-input flex-grow overflow-auto" contenteditable="true">
+                    <!-- Blocks will be dropped here -->
+                </div>
+            </div>
+            
+            <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                <h3 class="text-lg font-semibold">Generated Prompt:</h3>
+                <p id="generated-prompt" class="mt-2 text-gray-800 font-mono text-sm"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const blockPalette = document.getElementById('block-palette');
+        const workspace = document.getElementById('workspace');
+        const generatedPromptDisplay = document.getElementById('generated-prompt');
+        let draggedBlock = null;
+
+        /**
+         * Iterates through the children of the workspace and builds the prompt string.
+         * It correctly handles spacing between blocks and text.
+         */
+        const updatePrompt = () => {
+            let prompt = "";
+            const nodes = workspace.childNodes;
+            let lastNodeWasBlock = false;
+
+            nodes.forEach(node => {
+                let text = "";
+                // Handle a text node (user-typed text)
+                if (node.nodeType === Node.TEXT_NODE) {
+                    text = node.textContent.trim();
+                    if (text.length > 0) {
+                        if (prompt.length > 0 && !prompt.endsWith(" ")) {
+                             // Add a space if the previous part wasn't a space
+                            prompt += " ";
+                        }
+                        prompt += text;
+                        lastNodeWasBlock = false;
+                    }
+                } 
+                // Handle a block (a span element)
+                else if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('block')) {
+                    text = node.textContent;
+                    if (prompt.length > 0 && !prompt.endsWith(" ")) {
+                         // Add a space before a new block if the previous part didn't end with one
+                        prompt += " ";
+                    }
+                    prompt += text;
+                    lastNodeWasBlock = true;
+                }
+            });
+
+            // Clean up any double spaces and trim
+            prompt = prompt.replace(/\s\s+/g, ' ').trim();
+            generatedPromptDisplay.textContent = prompt;
+        };
+        
+        // Use a MutationObserver to listen for real-time changes to the workspace.
+        const observer = new MutationObserver(updatePrompt);
+        observer.observe(workspace, { childList: true, subtree: true, characterData: true });
+
+        // Add 'draggable' attribute and event listeners to all block containers in the palette
+        const paletteBlocks = document.querySelectorAll('.block-container');
+        paletteBlocks.forEach(block => {
+            block.addEventListener('dragstart', (e) => {
+                const text = block.innerText;
+                const type = block.dataset.type;
+                e.dataTransfer.setData('text/plain', text);
+                e.dataTransfer.setData('text/block-type', type);
+                // For a better drag experience, create a ghost element
+                const dragGhost = document.createElement('div');
+                dragGhost.className = `block-container block-${type}`;
+                dragGhost.innerText = text;
+                dragGhost.style.position = 'absolute';
+                dragGhost.style.top = '-1000px';
+                document.body.appendChild(dragGhost);
+                e.dataTransfer.setDragImage(dragGhost, 0, 0);
+                draggedBlock = dragGhost;
+            });
+            block.addEventListener('dragend', () => {
+                if (draggedBlock) {
+                    draggedBlock.remove();
+                    draggedBlock = null;
+                }
+            });
+        });
+
+        // Allow dropping on the workspace
+        workspace.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle the drop event
+        workspace.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const blockText = e.dataTransfer.getData('text/plain');
+            const blockType = e.dataTransfer.getData('text/block-type');
+
+            if (blockText) {
+                const newBlock = document.createElement('span');
+                newBlock.className = `block block-${blockType}`;
+                newBlock.textContent = blockText;
+                newBlock.setAttribute('contenteditable', 'false'); // Prevents editing the block content
+                
+                // Add event listener to remove the block when clicked
+                newBlock.addEventListener('click', () => {
+                    newBlock.remove();
+                    // The mutation observer will handle the prompt update automatically.
+                });
+
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    // Check if the drop is within the workspace
+                    if (workspace.contains(range.commonAncestorContainer)) {
+                        range.deleteContents(); // Removes any selected content
+                        range.insertNode(newBlock);
+                        
+                        // Collapse the selection to after the new block
+                        range.setStartAfter(newBlock);
+                        range.setEndAfter(newBlock);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                    }
+                } else {
+                    workspace.appendChild(newBlock);
+                }
+            }
+        });
+
+        // Add placeholders for a better user experience
+        const placeholder = document.createElement('p');
+        placeholder.className = 'text-gray-400 text-center select-none cursor-text';
+        placeholder.textContent = 'Drag blocks here or start typing...';
+        workspace.appendChild(placeholder);
+
+        workspace.addEventListener('focus', () => {
+            if (workspace.textContent === 'Drag blocks here or start typing...') {
+                workspace.textContent = '';
+            }
+        });
+
+        workspace.addEventListener('blur', () => {
+            if (workspace.textContent.trim() === '') {
+                workspace.textContent = 'Drag blocks here or start typing...';
+            }
+        });
+    </script>
+</body>
+</html>
